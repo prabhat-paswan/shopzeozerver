@@ -98,15 +98,21 @@ exports.getSubCategory = async (req, res) => {
 // Create new sub category
 exports.createSubCategory = async (req, res) => {
   try {
+    console.log('Creating subcategory with data:', req.body);
+    
     const {
       name,
       priority = 0,
       isActive = true,
       categoryId,
+      category_id, // Handle both field names
       metaTitle,
       metaDescription,
       metaKeywords
     } = req.body;
+    
+    // Use categoryId or category_id, whichever is provided
+    const finalCategoryId = categoryId || category_id;
     
     // Validate required fields
     if (!name) {
@@ -116,15 +122,17 @@ exports.createSubCategory = async (req, res) => {
       });
     }
     
-    if (!categoryId) {
+    if (!finalCategoryId) {
       return res.status(400).json({
         success: false,
         message: 'Main category is required'
       });
     }
     
+    console.log('Using category ID:', finalCategoryId);
+    
     // Check if category exists
-    const category = await Category.findByPk(categoryId);
+    const category = await Category.findByPk(finalCategoryId);
     if (!category) {
       return res.status(400).json({
         success: false,
@@ -150,11 +158,13 @@ exports.createSubCategory = async (req, res) => {
       slug,
       priority: parseInt(priority),
       is_active: Boolean(isActive),
-      category_id: parseInt(categoryId),
+      category_id: parseInt(finalCategoryId),
       meta_title: metaTitle,
       meta_description: metaDescription,
       meta_keywords: metaKeywords
     });
+    
+    console.log('Subcategory created successfully:', subCategory.id);
     
     res.status(201).json({
       success: true,

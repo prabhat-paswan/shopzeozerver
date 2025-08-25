@@ -62,6 +62,14 @@ exports.getProducts = async (req, res) => {
           model: Category,
           as: 'category',
           attributes: ['id', 'name']
+        },
+        {
+          model: require('../models/ProductMedia'),
+          as: 'productMedia',
+          attributes: ['id', 'media_type', 'media_url', 'media_order'],
+          where: { is_active: true },
+          required: false,
+          order: [['media_order', 'ASC']]
         }
       ]
     });
@@ -103,6 +111,14 @@ exports.getProduct = async (req, res) => {
           model: Category,
           as: 'category',
           attributes: ['id', 'name']
+        },
+        {
+          model: require('../models/ProductMedia'),
+          as: 'productMedia',
+          attributes: ['id', 'media_type', 'media_url', 'media_order'],
+          where: { is_active: true },
+          required: false,
+          order: [['media_order', 'ASC']]
         }
       ]
     });
@@ -154,6 +170,12 @@ exports.createProduct = async (req, res) => {
       }
     }
     
+    // Generate UUID for new product if not provided
+    if (!productData.id) {
+      const { v4: uuidv4 } = require('uuid');
+      productData.id = uuidv4();
+    }
+    
     // Set default values
     productData.is_active = productData.is_active !== undefined ? productData.is_active : true;
     productData.is_featured = productData.is_featured !== undefined ? productData.is_featured : false;
@@ -173,6 +195,14 @@ exports.createProduct = async (req, res) => {
           model: Category,
           as: 'category',
           attributes: ['id', 'name']
+        },
+        {
+          model: require('../models/ProductMedia'),
+          as: 'productMedia',
+          attributes: ['id', 'media_type', 'media_url', 'media_order'],
+          where: { is_active: true },
+          required: false,
+          order: [['media_order', 'ASC']]
         }
       ]
     });
@@ -185,12 +215,9 @@ exports.createProduct = async (req, res) => {
   } catch (error) {
     console.error('Create product error:', error);
     
-    // Handle duplicate key errors
+    // Handle other errors
     if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(400).json({
-        success: false,
-        message: 'Product with this code or SKU already exists'
-      });
+      console.log('Unexpected unique constraint error:', error.message);
     }
     
     res.status(500).json({
@@ -251,6 +278,14 @@ exports.updateProduct = async (req, res) => {
           model: Category,
           as: 'category',
           attributes: ['id', 'name']
+        },
+        {
+          model: require('../models/ProductMedia'),
+          as: 'productMedia',
+          attributes: ['id', 'media_type', 'media_url', 'media_order'],
+          where: { is_active: true },
+          required: false,
+          order: [['media_order', 'ASC']]
         }
       ]
     });
@@ -388,7 +423,13 @@ exports.exportProducts = async (req, res) => {
 const multer = require('multer');
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    // Create products folder if it doesn't exist
+    const fs = require('fs');
+    const uploadDir = 'uploads/products';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -467,8 +508,13 @@ exports.bulkUploadProducts = async (req, res) => {
 
         console.log('📊 Raw product data:', productData);
 
+        // Generate UUID for product
+        const { v4: uuidv4 } = require('uuid');
+        const productId = uuidv4();
+        
         // Map CSV fields to database fields
         const mappedProduct = {
+          id: productId,
           product_code: productData['Product Code'] || '',
           amazon_asin: productData['Amazon ASIN'] || '',
           name: productData['Name'] || '',
@@ -500,13 +546,43 @@ exports.bulkUploadProducts = async (req, res) => {
           description: productData['Description'] || '',
           return_exchange_condition: productData['Return/Exchange Condition'] || '',
           hsn_code: productData['HSN Code'] || '',
-          custom_attributes: productData['Customisation Id'] || '',
+          customisation_id: productData['Customisation Id'] || '',
           category_id: parseInt(productData['Category ID']) || 16,
           sub_category_id: parseInt(productData['Sub Category ID']) || 19,
           store_id: productData['Store ID'] || 'ce32fe90-7eaa-11f0-a328-f5704f3e47ab',
           is_active: true,
           is_featured: false
         };
+
+        // Prepare media data for product_media table
+        const mediaData = [];
+        let mediaOrder = 0;
+        
+        // Add images
+        for (let i = 1; i <= 10; i++) {
+          if (productData[`Image ${i}`]) {
+            mediaData.push({
+              product_id: productId,
+              media_type: 'image',
+              media_url: productData[`Image ${i}`],
+              media_order: mediaOrder++,
+              is_active: true
+            });
+          }
+        }
+        
+        // Add videos
+        for (let i = 1; i <= 2; i++) {
+          if (productData[`Video ${i}`]) {
+            mediaData.push({
+              product_id: productId,
+              media_type: 'video',
+              media_url: productData[`Video ${i}`],
+              media_order: mediaOrder++,
+              is_active: true
+            });
+          }
+        }
 
         console.log('🔄 Mapped product:', {
           name: mappedProduct.name,
@@ -548,6 +624,11 @@ exports.bulkUploadProducts = async (req, res) => {
         console.log(`✅ Row ${i + 1}: Validation passed`);
         products.push(mappedProduct);
         
+        // Store media data for later insertion
+        if (mediaData.length > 0) {
+          mappedProduct.mediaData = mediaData;
+        }
+        
       } catch (rowError) {
         console.log(`❌ Row ${i + 1}: Error: ${rowError.message}`);
         errorCount++;
@@ -575,6 +656,24 @@ exports.bulkUploadProducts = async (req, res) => {
         uploadedCount = createdProducts.length;
         console.log(`✅ Bulk insert successful! Created: ${uploadedCount} products`);
         console.log('📋 Created products:', createdProducts.map(p => ({ id: p.id, name: p.name, product_code: p.product_code })));
+
+        // Insert media data for each product
+        const ProductMedia = require('../models/ProductMedia');
+        let mediaInserted = 0;
+        
+        for (const product of products) {
+          if (product.mediaData && product.mediaData.length > 0) {
+            try {
+              await ProductMedia.bulkCreate(product.mediaData);
+              mediaInserted += product.mediaData.length;
+              console.log(`✅ Media inserted for product ${product.id}: ${product.mediaData.length} items`);
+            } catch (mediaError) {
+              console.log(`⚠️ Failed to insert media for product ${product.id}:`, mediaError.message);
+            }
+          }
+        }
+        
+        console.log(`📸 Total media items inserted: ${mediaInserted}`);
         
       } catch (dbError) {
         console.error('❌ Database insertion error:', dbError);
@@ -623,3 +722,4 @@ exports.bulkUploadProducts = async (req, res) => {
     });
   }
 };
+ 

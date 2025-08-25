@@ -35,13 +35,54 @@ const upload = multer({
 // Helper function to handle file uploads
 const handleFileUpload = async (files) => {
   const uploadedFiles = {};
+  const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
   
   if (files.logo) {
-    uploadedFiles.logo = files.logo[0].path;
+    try {
+      // Create upload directory if it doesn't exist
+      const uploadDir = 'uploads/brands';
+      const fullUploadDir = path.join(__dirname, '..', uploadDir);
+      await fs.mkdir(fullUploadDir, { recursive: true });
+      
+      // Generate unique filename
+      const timestamp = Date.now();
+      const originalName = files.logo[0].originalname || 'logo';
+      const extension = path.extname(originalName) || '.jpg';
+      const filename = `brand-${timestamp}-${Math.round(Math.random() * 1E9)}${extension}`;
+      const filepath = path.join(fullUploadDir, filename);
+      
+      // Move file to upload directory
+      await fs.writeFile(filepath, files.logo[0].buffer);
+      
+      // Return full URL
+      uploadedFiles.logo = `${baseUrl}/uploads/brands/${filename}`;
+    } catch (error) {
+      console.error('Logo upload error:', error);
+    }
   }
   
   if (files.banner) {
-    uploadedFiles.banner = files.banner[0].path;
+    try {
+      // Create upload directory if it doesn't exist
+      const uploadDir = 'uploads/brands';
+      const fullUploadDir = path.join(__dirname, '..', uploadDir);
+      await fs.mkdir(fullUploadDir, { recursive: true });
+      
+      // Generate unique filename
+      const timestamp = Date.now();
+      const originalName = files.banner[0].originalname || 'banner';
+      const extension = path.extname(originalName) || '.jpg';
+      const filename = `banner-${timestamp}-${Math.round(Math.random() * 1E9)}${extension}`;
+      const filepath = path.join(fullUploadDir, filename);
+      
+      // Move file to upload directory
+      await fs.writeFile(filepath, files.banner[0].buffer);
+      
+      // Return full URL
+      uploadedFiles.banner = `${baseUrl}/uploads/brands/${filename}`;
+    } catch (error) {
+      console.error('Banner upload error:', error);
+    }
   }
   
   return uploadedFiles;

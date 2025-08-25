@@ -3,15 +3,14 @@ const { sequelize } = require('../config/database');
 
 const Product = sequelize.define('Product', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.CHAR(36),
     primaryKey: true,
-    autoIncrement: true
+    defaultValue: DataTypes.UUIDV4
   },
   product_code: {
     type: DataTypes.STRING(100),
     allowNull: false,
-    unique: true,
-    comment: 'Unique product code'
+    comment: 'Product code (no longer unique)'
   },
   amazon_asin: {
     type: DataTypes.STRING(20),
@@ -250,7 +249,7 @@ const Product = sequelize.define('Product', {
   },
   // Foreign keys
   store_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: false,
     references: {
       model: 'stores',
@@ -273,6 +272,7 @@ const Product = sequelize.define('Product', {
       key: 'id'
     }
   },
+  // brand_id field removed - not present in database table
   // SEO fields
   meta_title: {
     type: DataTypes.STRING(255),
@@ -296,10 +296,11 @@ const Product = sequelize.define('Product', {
   timestamps: true,
   underscored: true,
   indexes: [
-    { fields: ['product_code'] },
+    // { fields: ['product_code'] }, // Removed - no longer unique
     { fields: ['store_id'] },
     { fields: ['category_id'] },
     { fields: ['sub_category_id'] },
+    // { fields: ['brand_id'] }, // Removed - field doesn't exist in DB
     { fields: ['is_active'] },
     { fields: ['is_featured'] },
     { fields: ['rating'] },

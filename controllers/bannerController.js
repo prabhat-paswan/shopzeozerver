@@ -35,9 +35,67 @@ const upload = multer({
 // Helper function to handle file uploads
 const handleFileUpload = async (files) => {
   const uploadedFiles = {};
+  const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
   
-  if (files.image) {
-    uploadedFiles.image = files.image[0].path;
+  console.log('Handling file upload with files:', files);
+  
+  // Handle both single file and array of files
+  let imageFile = null;
+  if (files && files.image) {
+    if (Array.isArray(files.image)) {
+      imageFile = files.image[0];
+    } else {
+      imageFile = files.image;
+    }
+  }
+  
+  if (imageFile) {
+    try {
+      console.log('Processing banner image upload:', {
+        originalname: imageFile.originalname,
+        mimetype: imageFile.mimetype,
+        size: imageFile.size,
+        path: imageFile.path
+      });
+      
+      // Create upload directory if it doesn't exist
+      const uploadDir = 'uploads/banners';
+      const fullUploadDir = path.join(__dirname, '..', uploadDir);
+      await fs.mkdir(fullUploadDir, { recursive: true });
+      
+      // Generate unique filename with proper extension handling
+      const timestamp = Date.now();
+      const originalName = imageFile.originalname || 'banner';
+      const extension = path.extname(originalName) || '.jpg';
+      const filename = `banner-${timestamp}-${Math.round(Math.random() * 1E9)}${extension}`;
+      const filepath = path.join(fullUploadDir, filename);
+      
+      console.log('Saving banner image to:', filepath);
+      
+      // Check if file was saved by multer or if we need to save it
+      if (imageFile.path && fs.existsSync(imageFile.path)) {
+        // File was already saved by multer, just copy it to our location
+        await fs.copyFile(imageFile.path, filepath);
+        // Delete the temporary file
+        await fs.unlink(imageFile.path);
+      } else if (imageFile.buffer) {
+        // File is in buffer, save it
+        await fs.writeFile(filepath, imageFile.buffer);
+      } else {
+        throw new Error('No file data available');
+      }
+      
+      // Return just the filename for database storage
+      uploadedFiles.image = filename;
+      
+      console.log('Banner image uploaded successfully:', filename);
+    } catch (error) {
+      console.error('Banner image upload error:', error);
+      throw new Error(`Banner image upload failed: ${error.message}`);
+    }
+  } else {
+    console.log('No banner image provided in files:', files);
+    throw new Error('Banner image is required');
   }
   
   return uploadedFiles;
@@ -48,7 +106,8 @@ const deleteOldFiles = async (banner, newFiles) => {
   const filesToDelete = [];
   
   if (newFiles.image && banner.image && newFiles.image !== banner.image) {
-    filesToDelete.push(banner.image);
+    const oldImagePath = path.join(__dirname, '..', 'uploads/banners', banner.image);
+    filesToDelete.push(oldImagePath);
   }
   
   for (const filePath of filesToDelete) {
@@ -65,32 +124,35 @@ const createBanner = async (req, res) => {
   try {
     const {
       title,
-      subtitle,
-      description,
-      image_alt_text,
-      banner_type,
-      resource_type,
-      resource_id,
-      resource_url,
-      button_text,
-      button_url,
-      start_date,
-      end_date,
-      is_active,
-      is_featured,
-      sort_order,
-      target_audience,
-      display_conditions,
-      meta_title,
-      meta_description,
-      meta_keywords
+      type,
+      data,
+      zone_id,
+      featured,
+      default_link
     } = req.body;
 
     // Validate required fields
-    if (!title || !banner_type) {
+    if (!title || !type) {
       return res.status(400).json({
         success: false,
-        message: 'Title and banner type are required'
+        message: 'Title and type are required'
+      });
+    }
+
+    // Validate banner type
+    const validTypes = ['store_wise', 'item_wise', 'category_wise', 'common'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid banner type. Must be one of: store_wise, item_wise, category_wise, common'
+      });
+    }
+
+    // Validate data field based on type
+    if (type !== 'common' && !data) {
+      return res.status(400).json({
+        success: false,
+        message: `Data field is required for ${type} banners`
       });
     }
 
@@ -111,26 +173,14 @@ const createBanner = async (req, res) => {
     // Create banner
     const banner = await Banner.create({
       title,
-      subtitle,
-      description,
+      type,
       image: uploadedFiles.image,
-      image_alt_text,
-      banner_type,
-      resource_type,
-      resource_id: resource_id ? parseInt(resource_id) : null,
-      resource_url,
-      button_text,
-      button_url,
-      start_date: start_date ? new Date(start_date) : null,
-      end_date: end_date ? new Date(end_date) : null,
-      is_active: is_active === 'true',
-      is_featured: is_featured === 'true',
-      sort_order: sort_order ? parseInt(sort_order) : 0,
-      target_audience,
-      display_conditions,
-      meta_title,
-      meta_description,
-      meta_keywords
+      data: data || null,
+      zone_id: parseInt(zone_id) || 1,
+      featured: featured === 'true' ? 1 : 0,
+      default_link,
+      status: 1, // Default to active
+      created_by: 'admin'
     });
 
     res.status(201).json({
@@ -148,64 +198,54 @@ const createBanner = async (req, res) => {
   }
 };
 
-// Get all banners with pagination and search
-const getAllBanners = async (req, res) => {
+// Get all banners with pagination
+const getBanners = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      search = '',
-      status = '',
-      featured = '',
-      banner_type = '',
-      resource_type = ''
-    } = req.query;
-
-    const offset = (page - 1) * limit;
+    const { page = 1, limit = 10, type, status } = req.query;
+    
     const whereClause = {};
-
-    // Search by banner content
-    if (search) {
-      whereClause[Op.or] = [
-        { title: { [Op.like]: `%${search}%` } },
-        { subtitle: { [Op.like]: `%${search}%` } },
-        { description: { [Op.like]: `%${search}%` } }
-      ];
+    
+    // Filter by type
+    if (type) {
+      whereClause.type = type;
     }
-
+    
     // Filter by status
-    if (status !== '') {
-      whereClause.is_active = status === 'active';
-    }
-
-    // Filter by featured
-    if (featured !== '') {
-      whereClause.is_featured = featured === 'featured';
-    }
-
-    // Filter by banner type
-    if (banner_type) {
-      whereClause.banner_type = banner_type;
-    }
-
-    // Filter by resource type
-    if (resource_type) {
-      whereClause.resource_type = resource_type;
+    if (status !== undefined) {
+      whereClause.status = parseInt(status);
     }
 
     const { count, rows: banners } = await Banner.findAndCountAll({
       where: whereClause,
-      order: [['sort_order', 'ASC'], ['created_at', 'DESC']],
+      order: [['created_at', 'DESC']],
       limit: parseInt(limit),
-      offset: parseInt(offset)
+      offset: parseInt(limit) * (parseInt(page) - 1)
     });
 
-    const totalPages = Math.ceil(count / limit);
+    const totalPages = Math.ceil(count / parseInt(limit));
+
+    // Transform data to match frontend expectations
+    const transformedBanners = banners.map(banner => ({
+      id: banner.id,
+      title: banner.title,
+      subtitle: banner.type, // Map type to subtitle for display
+      description: banner.data, // Map data to description for display
+      image: `/uploads/banners/${banner.image}`, // Construct full image URL
+      banner_type: banner.type,
+      button_text: banner.default_link ? 'View' : null,
+      button_url: banner.default_link,
+      is_active: banner.status === 1,
+      is_featured: banner.featured === 1,
+      sort_order: 0, // Not available in current schema
+      clicks: 0, // Not available in current schema
+      impressions: 0, // Not available in current schema
+      ctr: 0 // Not available in current schema
+    }));
 
     res.json({
       success: true,
       data: {
-        banners,
+        banners: transformedBanners,
         pagination: {
           currentPage: parseInt(page),
           totalPages,
@@ -312,7 +352,8 @@ const deleteBanner = async (req, res) => {
     // Delete associated image file
     if (banner.image) {
       try {
-        await fs.unlink(banner.image);
+        const imagePath = path.join(__dirname, '..', 'uploads/banners', banner.image);
+        await fs.unlink(imagePath);
       } catch (error) {
         console.error('Error deleting banner image:', error);
       }
@@ -347,13 +388,13 @@ const toggleBannerStatus = async (req, res) => {
       });
     }
 
-    const newStatus = !banner.is_active;
-    await banner.update({ is_active: newStatus });
+    const newStatus = banner.status === 1 ? 0 : 1;
+    await banner.update({ status: newStatus });
 
     res.json({
       success: true,
-      message: `Banner ${newStatus ? 'activated' : 'deactivated'} successfully`,
-      data: { is_active: newStatus }
+      message: `Banner ${newStatus === 1 ? 'activated' : 'deactivated'} successfully`,
+      data: { status: newStatus }
     });
   } catch (error) {
     console.error('Toggle banner status error:', error);
@@ -378,13 +419,13 @@ const toggleBannerFeatured = async (req, res) => {
       });
     }
 
-    const newFeaturedStatus = !banner.is_featured;
-    await banner.update({ is_featured: newFeaturedStatus });
+    const newFeatured = banner.featured === 1 ? 0 : 1;
+    await banner.update({ featured: newFeatured });
 
     res.json({
       success: true,
-      message: `Banner ${newFeaturedStatus ? 'featured' : 'unfeatured'} successfully`,
-      data: { is_featured: newFeaturedStatus }
+      message: `Banner ${newFeatured === 1 ? 'featured' : 'unfeatured'} successfully`,
+      data: { featured: newFeatured }
     });
   } catch (error) {
     console.error('Toggle banner featured error:', error);
@@ -396,169 +437,13 @@ const toggleBannerFeatured = async (req, res) => {
   }
 };
 
-// Export banners to CSV
-const exportBanners = async (req, res) => {
-  try {
-    const banners = await Banner.findAll({
-      order: [['sort_order', 'ASC'], ['created_at', 'DESC']]
-    });
-
-    // Convert to CSV format
-    const csvData = banners.map(banner => ({
-      'Banner ID': banner.id,
-      'Title': banner.title,
-      'Subtitle': banner.subtitle || '',
-      'Description': banner.description || '',
-      'Banner Type': banner.banner_type,
-      'Resource Type': banner.resource_type || '',
-      'Resource ID': banner.resource_id || '',
-      'Resource URL': banner.resource_url || '',
-      'Button Text': banner.button_text || '',
-      'Button URL': banner.button_url || '',
-      'Start Date': banner.start_date || '',
-      'End Date': banner.end_date || '',
-      'Featured': banner.is_featured ? 'Yes' : 'No',
-      'Status': banner.is_active ? 'Active' : 'Inactive',
-      'Sort Order': banner.sort_order,
-      'Clicks': banner.clicks || 0,
-      'Impressions': banner.impressions || 0,
-      'CTR': banner.ctr || 0,
-      'Target Audience': banner.target_audience || '',
-      'Created Date': banner.created_at
-    }));
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=banners.csv');
-
-    // Simple CSV conversion
-    const csvString = [
-      Object.keys(csvData[0]).join(','),
-      ...csvData.map(row => Object.values(row).map(value => `"${value || ''}"`).join(','))
-    ].join('\n');
-
-    res.send(csvString);
-  } catch (error) {
-    console.error('Export banners error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to export banners',
-      error: error.message
-    });
-  }
-};
-
-// Get active banners by type
-const getActiveBannersByType = async (req, res) => {
-  try {
-    const { banner_type, limit = 5 } = req.params;
-
-    const banners = await Banner.findAll({
-      where: { 
-        is_active: true,
-        banner_type: banner_type
-      },
-      order: [['sort_order', 'ASC'], ['is_featured', 'DESC'], ['created_at', 'DESC']],
-      limit: parseInt(limit)
-    });
-
-    res.json({
-      success: true,
-      data: banners
-    });
-  } catch (error) {
-    console.error('Get active banners by type error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch active banners',
-      error: error.message
-    });
-  }
-};
-
-// Get featured banners
-const getFeaturedBanners = async (req, res) => {
-  try {
-    const banners = await Banner.findAll({
-      where: { is_active: true, is_featured: true },
-      order: [['sort_order', 'ASC'], ['created_at', 'DESC']],
-      limit: 10
-    });
-
-    res.json({
-      success: true,
-      data: banners
-    });
-  } catch (error) {
-    console.error('Get featured banners error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch featured banners',
-      error: error.message
-    });
-  }
-};
-
-// Update banner analytics (clicks, impressions)
-const updateBannerAnalytics = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { action } = req.body; // 'click' or 'impression'
-
-    const banner = await Banner.findByPk(id);
-    if (!banner) {
-      return res.status(404).json({
-        success: false,
-        message: 'Banner not found'
-      });
-    }
-
-    let updateData = {};
-    
-    if (action === 'click') {
-      updateData.clicks = (banner.clicks || 0) + 1;
-    } else if (action === 'impression') {
-      updateData.impressions = (banner.impressions || 0) + 1;
-    }
-
-    // Calculate CTR (Click Through Rate)
-    if (updateData.impressions && updateData.clicks) {
-      updateData.ctr = ((updateData.clicks / updateData.impressions) * 100).toFixed(2);
-    } else if (updateData.clicks && banner.impressions) {
-      updateData.ctr = ((updateData.clicks / banner.impressions) * 100).toFixed(2);
-    }
-
-    await banner.update(updateData);
-
-    res.json({
-      success: true,
-      message: 'Banner analytics updated successfully',
-      data: { 
-        clicks: updateData.clicks || banner.clicks,
-        impressions: updateData.impressions || banner.impressions,
-        ctr: updateData.ctr || banner.ctr
-      }
-    });
-  } catch (error) {
-    console.error('Update banner analytics error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update banner analytics',
-      error: error.message
-    });
-  }
-};
-
 module.exports = {
+  upload,
   createBanner,
-  getAllBanners,
+  getBanners,
   getBannerById,
   updateBanner,
   deleteBanner,
   toggleBannerStatus,
-  toggleBannerFeatured,
-  exportBanners,
-  getActiveBannersByType,
-  getFeaturedBanners,
-  updateBannerAnalytics,
-  upload
+  toggleBannerFeatured
 };

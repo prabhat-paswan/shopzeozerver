@@ -10,18 +10,21 @@ const createStore = async (req, res) => {
       name,
       description,
       address,
+      city,
+      state,
+      country,
+      postal_code,
       phone,
       email,
       password,
       gst_number,
       gst_percentage,
-      meta_title,
-      meta_description,
-      meta_keywords
+      pan_number,
+      business_type
     } = req.body;
 
     // Check if email already exists
-    const existingUser = await User.findByEmail(email);
+    const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -38,6 +41,15 @@ const createStore = async (req, res) => {
       });
     }
 
+    // Check if GST number already exists
+    const existingGST = await Store.findOne({ where: { gst_number } });
+    if (existingGST) {
+      return res.status(400).json({
+        success: false,
+        message: 'A store with this GST number already exists'
+      });
+    }
+
     // Create vendor user account
     const vendorUser = await User.create({
       first_name: name.split(' ')[0] || 'Vendor',
@@ -49,10 +61,10 @@ const createStore = async (req, res) => {
       is_active: true,
       is_verified: false,
       address,
-      city: req.body.city || '',
-      state: req.body.state || '',
-      country: req.body.country || 'India',
-      postal_code: req.body.postal_code || ''
+      city,
+      state,
+      country,
+      postal_code
     });
 
     // Generate slug from store name
@@ -64,23 +76,20 @@ const createStore = async (req, res) => {
       slug,
       description,
       address,
+      city,
+      state,
+      country,
+      postal_code,
       phone,
       email,
       gst_number,
-      gst_percentage,
+      gst_percentage: parseFloat(gst_percentage) || 18.00,
+      pan_number,
+      business_type,
       owner_id: vendorUser.id,
-      meta_title,
-      meta_description,
-      meta_keywords
-    });
-
-    // Update user with store reference
-    await vendorUser.update({ 
-      address: address || vendorUser.address,
-      city: req.body.city || vendorUser.city,
-      state: req.body.state || vendorUser.state,
-      country: req.body.country || vendorUser.country,
-      postal_code: req.body.postal_code || vendorUser.postal_code
+      meta_title: `${name} - Online Store`,
+      meta_description: description || `Shop at ${name} for the best products and deals`,
+      meta_keywords: `${name}, online store, shopping, ${business_type}`
     });
 
     res.status(201).json({
@@ -94,8 +103,14 @@ const createStore = async (req, res) => {
           email: store.email,
           phone: store.phone,
           address: store.address,
+          city: store.city,
+          state: store.state,
+          country: store.country,
+          postal_code: store.postal_code,
           gst_number: store.gst_number,
           gst_percentage: store.gst_percentage,
+          pan_number: store.pan_number,
+          business_type: store.business_type,
           is_active: store.is_active,
           is_verified: store.is_verified
         },
@@ -161,9 +176,9 @@ const getAllStores = async (req, res) => {
         }
       ],
       attributes: [
-        'id', 'name', 'slug', 'description', 'logo', 'banner', 'address', 'phone', 'email',
-        'gst_number', 'gst_percentage', 'is_active', 'is_verified', 'rating',
-        'total_products', 'total_orders', 'total_revenue', 'commission_rate',
+        'id', 'name', 'slug', 'description', 'logo', 'banner', 'address', 'city', 'state', 'country', 'postal_code',
+        'phone', 'email', 'gst_number', 'gst_percentage', 'pan_number', 'business_type', 'is_active', 'is_verified', 
+        'rating', 'total_products', 'total_orders', 'total_revenue', 'commission_rate',
         'created_at', 'updated_at'
       ],
       order: [['created_at', 'DESC']],
@@ -444,9 +459,9 @@ const exportStores = async (req, res) => {
         }
       ],
       attributes: [
-        'id', 'name', 'email', 'phone', 'address', 'gst_number', 'gst_percentage',
-        'is_active', 'is_verified', 'rating', 'total_products', 'total_orders',
-        'total_revenue', 'commission_rate', 'created_at'
+        'id', 'name', 'email', 'phone', 'address', 'city', 'state', 'country', 'postal_code',
+        'gst_number', 'gst_percentage', 'pan_number', 'business_type', 'is_active', 'is_verified', 
+        'rating', 'total_products', 'total_orders', 'total_revenue', 'commission_rate', 'created_at'
       ],
       order: [['created_at', 'DESC']]
     });
@@ -459,8 +474,14 @@ const exportStores = async (req, res) => {
       'Email': store.email,
       'Phone': store.phone,
       'Address': store.address,
+      'City': store.city,
+      'State': store.state,
+      'Country': store.country,
+      'Postal Code': store.postal_code,
       'GST Number': store.gst_number,
       'GST %': store.gst_percentage,
+      'PAN Number': store.pan_number,
+      'Business Type': store.business_type,
       'Status': store.is_active ? 'Active' : 'Inactive',
       'Verified': store.is_verified ? 'Yes' : 'No',
       'Rating': store.rating,

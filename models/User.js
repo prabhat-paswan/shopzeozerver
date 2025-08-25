@@ -4,9 +4,9 @@ const bcrypt = require('bcryptjs');
 
 const User = sequelize.define('User', {
   id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
   },
   first_name: {
     type: DataTypes.STRING(100),
@@ -35,7 +35,7 @@ const User = sequelize.define('User', {
   },
   phone: {
     type: DataTypes.STRING(20),
-    allowNull: true,
+    allowNull: false,
     validate: {
       len: [10, 20]
     }
@@ -110,6 +110,20 @@ const User = sequelize.define('User', {
   postal_code: {
     type: DataTypes.STRING(20),
     allowNull: true
+  },
+  // Customer specific fields
+  default_shipping_address: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  default_billing_address: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  preferences: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: {}
   }
 }, {
   tableName: 'users',

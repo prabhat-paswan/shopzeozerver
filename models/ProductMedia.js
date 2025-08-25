@@ -7,79 +7,41 @@ const ProductMedia = sequelize.define('ProductMedia', {
     primaryKey: true,
     autoIncrement: true
   },
-  productId: {
-    type: DataTypes.INTEGER,
+  product_id: {
+    type: DataTypes.CHAR(36),
     allowNull: false,
     references: {
       model: 'products',
       key: 'id'
     }
   },
-  mediaId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'media',
-      key: 'id'
-    }
-  },
-  type: {
-    type: DataTypes.ENUM('image', 'video', 'document'),
+  media_type: {
+    type: DataTypes.ENUM('image', 'video'),
     allowNull: false,
     defaultValue: 'image'
   },
-  isPrimary: {
-    type: DataTypes.BOOLEAN,
-    allowNull: false,
-    defaultValue: false,
-    comment: 'True if this is the primary media for the product'
+  media_url: {
+    type: DataTypes.STRING(500),
+    allowNull: false
   },
-  isGallery: {
-    type: DataTypes.BOOLEAN,
-    allowNull: false,
-    defaultValue: true,
-    comment: 'True if this media should appear in the product gallery'
-  },
-  alt: {
-    type: DataTypes.STRING(255),
-    allowNull: true,
-    comment: 'Alt text for accessibility'
-  },
-  caption: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  },
-  sortOrder: {
+  media_order: {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 0
+  },
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true
   }
 }, {
   tableName: 'product_media',
   timestamps: true,
+  underscored: true,
   indexes: [
-    {
-      unique: true,
-      fields: ['productId', 'mediaId']
-    },
-    {
-      fields: ['productId']
-    },
-    {
-      fields: ['mediaId']
-    },
-    {
-      fields: ['type']
-    },
-    {
-      fields: ['isPrimary']
-    },
-    {
-      fields: ['isGallery']
-    },
-    {
-      fields: ['sortOrder']
-    }
+    { fields: ['product_id'] },
+    { fields: ['media_type'] },
+    { fields: ['media_order'] }
   ]
 });
 

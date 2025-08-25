@@ -11,7 +11,7 @@ const sequelize = new Sequelize(
     dialect: 'mysql',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     pool: {
-      max: 10,
+      max: 5,
       min: 0,
       acquire: 30000,
       idle: 10000
@@ -20,8 +20,7 @@ const sequelize = new Sequelize(
       timestamps: true,
       underscored: true,
       freezeTableName: true
-    },
-    timezone: '+00:00'
+    }
   }
 );
 
@@ -29,13 +28,14 @@ const sequelize = new Sequelize(
 const testConnection = async () => {
   try {
     await sequelize.authenticate();
-    console.log('✅ Database connection has been established successfully.');
+    console.log('✅ Database connection established successfully.');
+    
+    // Don't sync models automatically - tables already exist
+    console.log('✅ Database connection ready.');
+    
   } catch (error) {
     console.error('❌ Unable to connect to the database:', error);
   }
 };
 
-// Initialize database connection
-testConnection();
-
-module.exports = { sequelize };
+module.exports = { sequelize, testConnection };

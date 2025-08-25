@@ -2,6 +2,7 @@ const User = require('./User');
 const Store = require('./Store');
 const Product = require('./Product');
 const Category = require('./Category');
+const SubCategory = require('./SubCategory');
 const Brand = require('./Brand');
 const Attribute = require('./Attribute');
 const AttributeValue = require('./AttributeValue');
@@ -36,7 +37,7 @@ const Settings = require('./Settings');
 const AuditLog = require('./AuditLog');
 
 // User Associations
-User.hasMany(Store, { foreignKey: 'userId', as: 'stores' });
+User.hasMany(Store, { foreignKey: 'owner_id', as: 'stores' });
 User.hasMany(Address, { foreignKey: 'userId', as: 'addresses' });
 User.hasMany(Order, { foreignKey: 'customerId', as: 'orders' });
 User.hasMany(Order, { foreignKey: 'deliveryManId', as: 'deliveries' });
@@ -60,20 +61,22 @@ User.hasMany(Settings, { foreignKey: 'updatedBy', as: 'settingsUpdates' });
 User.hasMany(AuditLog, { foreignKey: 'userId', as: 'auditLogs' });
 
 // Store Associations
-Store.belongsTo(User, { foreignKey: 'userId', as: 'owner' });
-Store.hasMany(Product, { foreignKey: 'storeId', as: 'products' });
+Store.belongsTo(User, { foreignKey: 'owner_id', as: 'owner' });
+Store.hasMany(Product, { foreignKey: 'store_id', as: 'products' });
 Store.hasMany(Order, { foreignKey: 'storeId', as: 'orders' });
 Store.hasMany(Stock, { foreignKey: 'storeId', as: 'inventory' });
 Store.hasMany(Ticket, { foreignKey: 'storeId', as: 'tickets' });
 
 // Product Associations
-Product.belongsTo(Store, { foreignKey: 'storeId', as: 'store' });
-Product.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+Product.belongsTo(Store, { foreignKey: 'store_id', as: 'store' });
+Product.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
+Product.belongsTo(SubCategory, { foreignKey: 'sub_category_id', as: 'subCategory' });
+// Product.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' }); // Removed - field doesn't exist in DB
 Product.hasMany(ProductVariant, { foreignKey: 'productId', as: 'variants' });
 Product.hasMany(ProductCategory, { foreignKey: 'productId', as: 'productCategories' });
 Product.hasMany(ProductBrand, { foreignKey: 'productId', as: 'productBrands' });
 Product.hasMany(ProductAttribute, { foreignKey: 'productId', as: 'productAttributes' });
-Product.hasMany(ProductMedia, { foreignKey: 'productId', as: 'productMedia' });
+Product.hasMany(ProductMedia, { foreignKey: 'product_id', as: 'productMedia' });
 Product.hasMany(Stock, { foreignKey: 'productId', as: 'stock' });
 Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'orderItems' });
 Product.hasMany(Review, { foreignKey: 'productId', as: 'reviews' });
@@ -81,7 +84,7 @@ Product.hasMany(Like, { foreignKey: 'likeableId', constraints: false, scope: { l
 
 // Category Associations
 Category.hasMany(ProductCategory, { foreignKey: 'categoryId', as: 'productCategories' });
-Category.hasMany(Product, { through: ProductCategory, as: 'products' });
+Category.belongsToMany(Product, { through: ProductCategory, as: 'products' });
 Category.hasMany(Category, { foreignKey: 'parentId', as: 'children' });
 Category.belongsTo(Category, { foreignKey: 'parentId', as: 'parent' });
 
@@ -89,9 +92,13 @@ Category.belongsTo(Category, { foreignKey: 'parentId', as: 'parent' });
 Category.hasMany(SubCategory, { as: 'subCategories', foreignKey: 'categoryId' });
 SubCategory.belongsTo(Category, { as: 'category', foreignKey: 'categoryId' });
 
+// Product associations for Category and SubCategory
+Category.hasMany(Product, { foreignKey: 'category_id', as: 'categoryProducts' });
+SubCategory.hasMany(Product, { foreignKey: 'sub_category_id', as: 'subCategoryProducts' });
+
 // Brand Associations
 Brand.hasMany(ProductBrand, { foreignKey: 'brandId', as: 'productBrands' });
-Brand.hasMany(Product, { through: ProductBrand, as: 'products' });
+Brand.belongsToMany(Product, { through: ProductBrand, as: 'brandProducts' });
 
 // Attribute Associations
 Attribute.hasMany(AttributeValue, { foreignKey: 'attributeId', as: 'values' });
@@ -136,8 +143,8 @@ Media.hasMany(ProductMedia, { foreignKey: 'mediaId', as: 'productMedia' });
 Order.belongsTo(User, { foreignKey: 'customerId', as: 'customer' });
 Order.belongsTo(Store, { foreignKey: 'storeId', as: 'store' });
 Order.belongsTo(User, { foreignKey: 'deliveryManId', as: 'deliveryMan' });
-Order.belongsTo(Address, { foreignKey: 'billingAddressId', as: 'billingAddress' });
-Order.belongsTo(Address, { foreignKey: 'shippingAddressId', as: 'shippingAddress' });
+Order.belongsTo(Address, { foreignKey: 'billingAddressId', as: 'billingAddressRef' });
+Order.belongsTo(Address, { foreignKey: 'shippingAddressId', as: 'shippingAddressRef' });
 Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'items' });
 Order.hasMany(Shipment, { foreignKey: 'orderId', as: 'shipments' });
 Order.hasMany(Payment, { foreignKey: 'orderId', as: 'payments' });
@@ -178,7 +185,7 @@ Transaction.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 
 // Ticket Associations
 Ticket.belongsTo(User, { foreignKey: 'customerId', as: 'customer' });
-Ticket.belongsTo(User, { foreignKey: 'assignedTo', as: 'assignedTo' });
+Ticket.belongsTo(User, { foreignKey: 'assignedTo', as: 'assignedToUser' });
 Ticket.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
 Ticket.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 Ticket.belongsTo(Store, { foreignKey: 'storeId', as: 'store' });

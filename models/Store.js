@@ -3,15 +3,17 @@ const { sequelize } = require('../config/database');
 
 const Store = sequelize.define('Store', {
   id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
   },
   name: {
     type: DataTypes.STRING(255),
     allowNull: false,
+    unique: true,
     validate: {
-      notEmpty: true
+      notEmpty: true,
+      len: [2, 255]
     }
   },
   slug: {
@@ -25,36 +27,76 @@ const Store = sequelize.define('Store', {
   },
   logo: {
     type: DataTypes.STRING(500),
-    allowNull: true,
-    comment: 'Store logo image path'
+    allowNull: true
   },
   banner: {
     type: DataTypes.STRING(500),
-    allowNull: true,
-    comment: 'Store banner image path'
+    allowNull: true
   },
   address: {
     type: DataTypes.TEXT,
-    allowNull: true
+    allowNull: false
+  },
+  city: {
+    type: DataTypes.STRING(100),
+    allowNull: false
+  },
+  state: {
+    type: DataTypes.STRING(100),
+    allowNull: false
+  },
+  country: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    defaultValue: 'India'
+  },
+  postal_code: {
+    type: DataTypes.STRING(20),
+    allowNull: false
   },
   phone: {
     type: DataTypes.STRING(20),
-    allowNull: true
+    allowNull: false,
+    validate: {
+      len: [10, 20]
+    }
   },
   email: {
     type: DataTypes.STRING(255),
-    allowNull: true
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true
+    }
   },
   gst_number: {
-    type: DataTypes.STRING(20),
-    allowNull: true,
-    comment: 'GST registration number'
+    type: DataTypes.STRING(15),
+    allowNull: false,
+    unique: true,
+    validate: {
+      len: [15, 15]
+    }
   },
   gst_percentage: {
     type: DataTypes.DECIMAL(5, 2),
+    allowNull: false,
+    defaultValue: 18.00,
+    validate: {
+      min: 0,
+      max: 100
+    }
+  },
+  pan_number: {
+    type: DataTypes.STRING(10),
     allowNull: true,
-    defaultValue: 0,
-    comment: 'Default GST percentage for store'
+    validate: {
+      len: [10, 10]
+    }
+  },
+  business_type: {
+    type: DataTypes.ENUM('individual', 'partnership', 'company', 'llp'),
+    allowNull: false,
+    defaultValue: 'individual'
   },
   is_active: {
     type: DataTypes.BOOLEAN,
@@ -62,13 +104,15 @@ const Store = sequelize.define('Store', {
   },
   is_verified: {
     type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    comment: 'Store verification status'
+    defaultValue: false
   },
   rating: {
     type: DataTypes.DECIMAL(3, 2),
-    defaultValue: 0,
-    comment: 'Store rating (0-5)'
+    defaultValue: 0.00,
+    validate: {
+      min: 0,
+      max: 5
+    }
   },
   total_products: {
     type: DataTypes.INTEGER,
@@ -79,16 +123,19 @@ const Store = sequelize.define('Store', {
     defaultValue: 0
   },
   total_revenue: {
-    type: DataTypes.DECIMAL(15, 2),
-    defaultValue: 0
+    type: DataTypes.DECIMAL(12, 2),
+    defaultValue: 0.00
   },
   commission_rate: {
     type: DataTypes.DECIMAL(5, 2),
-    defaultValue: 15,
-    comment: 'Platform commission percentage'
+    defaultValue: 5.00,
+    validate: {
+      min: 0,
+      max: 100
+    }
   },
   owner_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: false,
     references: {
       model: 'users',
@@ -112,11 +159,13 @@ const Store = sequelize.define('Store', {
   timestamps: true,
   underscored: true,
   indexes: [
+    { fields: ['name'] },
     { fields: ['slug'] },
+    { fields: ['email'] },
+    { fields: ['gst_number'] },
     { fields: ['owner_id'] },
     { fields: ['is_active'] },
-    { fields: ['is_verified'] },
-    { fields: ['rating'] }
+    { fields: ['is_verified'] }
   ]
 });
 

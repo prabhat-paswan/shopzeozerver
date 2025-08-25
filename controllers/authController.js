@@ -1,132 +1,90 @@
-const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const { validationResult } = require('express-validator');
+const { Admin } = require('../models');
+const { generateCaptcha, validateCaptcha } = require('../utils/captcha');
 
-// Generate JWT Token
-const generateToken = (user) => {
-  return jwt.sign(
-    { 
-      id: user.id, 
-      email: user.email, 
-      role: user.role 
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-};
+// Store captcha sessions (in production, use Redis)
+const captchaSessions = new Map();
 
-// User Registration
-const register = async (req, res) => {
+// Generate Captcha
+exports.generateCaptcha = async (req, res) => {
   try {
-    // Validation
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    const {
-      first_name,
-      last_name,
-      email,
-      phone,
-      password,
-      role = 'customer',
-      address,
-      city,
-      state,
-      country,
-      postal_code
-    } = req.body;
-
-    // Check if user already exists
-    const existingUser = await User.findByEmail(email);
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'User with this email already exists'
-      });
-    }
-
-    // Check if phone already exists
-    if (phone) {
-      const existingPhone = await User.findByPhone(phone);
-      if (existingPhone) {
-        return res.status(400).json({
-          success: false,
-          message: 'User with this phone number already exists'
-        });
-      }
-    }
-
-    // Create user
-    const user = await User.create({
-      first_name,
-      last_name,
-      email,
-      phone,
-      password,
-      role,
-      address,
-      city,
-      state,
-      country,
-      postal_code
+    const sessionId = req.sessionID || Date.now().toString();
+    const captcha = generateCaptcha();
+    
+    // Store captcha in session
+    captchaSessions.set(sessionId, {
+      text: captcha.text,
+      expiresAt: Date.now() + (5 * 60 * 1000) // 5 minutes
     });
 
-    // Generate token
-    const token = generateToken(user);
-
-    // Remove password from response
-    const userResponse = user.toJSON();
-    delete userResponse.password;
-
-    res.status(201).json({
+    res.json({
       success: true,
-      message: 'User registered successfully',
       data: {
-        user: userResponse,
-        token
+        sessionId,
+        image: captcha.image,
+        expiresIn: 300 // 5 minutes in seconds
       }
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('Captcha generation error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to register user',
-      error: error.message
+      message: 'Failed to generate captcha'
     });
   }
 };
 
-// User Login
-const login = async (req, res) => {
+// Admin Login
+exports.adminLogin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, captchaText, sessionId } = req.body;
 
-    // Validation
-    if (!email || !password) {
+    // Validate required fields
+    if (!email || !password || !captchaText || !sessionId) {
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required'
+        message: 'All fields are required'
       });
     }
 
-    // Find user by email
-    const user = await User.findByEmail(email);
-    if (!user) {
+    // Validate captcha
+    const captchaSession = captchaSessions.get(sessionId);
+    if (!captchaSession || Date.now() > captchaSession.expiresAt) {
+      return res.status(400).json({
+        success: false,
+        message: 'Captcha expired or invalid session'
+      });
+    }
+
+    if (captchaSession.text.toLowerCase() !== captchaText.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid captcha code'
+      });
+    }
+
+    // Clear used captcha
+    captchaSessions.delete(sessionId);
+
+    // Find admin by email
+    const admin = await Admin.findOne({ where: { email } });
+    if (!admin) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
 
-    // Check if user is active
-    if (!user.is_active) {
+    // Check if account is locked
+    if (admin.isLocked()) {
+      return res.status(423).json({
+        success: false,
+        message: 'Account is temporarily locked due to multiple failed attempts'
+      });
+    }
+
+    // Check if admin is active
+    if (!admin.isActive) {
       return res.status(401).json({
         success: false,
         message: 'Account is deactivated'
@@ -134,363 +92,139 @@ const login = async (req, res) => {
     }
 
     // Verify password
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await admin.comparePassword(password);
     if (!isPasswordValid) {
+      // Increment login attempts
+      admin.loginAttempts += 1;
+      
+      // Lock account after 5 failed attempts for 15 minutes
+      if (admin.loginAttempts >= 5) {
+        admin.lockedUntil = new Date(Date.now() + (15 * 60 * 1000)); // 15 minutes
+      }
+      
+      await admin.save();
+
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
 
-    // Update last login
-    await user.update({ last_login_at: new Date() });
+    // Reset login attempts on successful login
+    admin.loginAttempts = 0;
+    admin.lockedUntil = null;
+    admin.lastLogin = new Date();
+    await admin.save();
 
-    // Generate token
-    const token = generateToken(user);
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        id: admin.id,
+        email: admin.email,
+        role: admin.role
+      },
+      process.env.JWT_SECRET || 'shopzeo-secret-key',
+      { expiresIn: '24h' }
+    );
 
-    // Remove password from response
-    const userResponse = user.toJSON();
-    delete userResponse.password;
+    // Set token in cookie
+    res.cookie('adminToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    });
 
     res.json({
       success: true,
       message: 'Login successful',
       data: {
-        user: userResponse,
+        admin: {
+          id: admin.id,
+          name: admin.name,
+          email: admin.email,
+          role: admin.role
+        },
         token
       }
     });
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to login',
-      error: error.message
+      message: 'Internal server error'
     });
   }
 };
 
-// Get Current User Profile
-const getProfile = async (req, res) => {
+// Verify Token Middleware
+exports.verifyToken = async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ['password'] }
-    });
+    const token = req.cookies.adminToken || req.headers.authorization?.split(' ')[1];
 
-    if (!user) {
-      return res.status(404).json({
+    if (!token) {
+      return res.status(401).json({
         success: false,
-        message: 'User not found'
+        message: 'Access token required'
       });
     }
 
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'shopzeo-secret-key');
+    
+    // Check if admin still exists and is active
+    const admin = await Admin.findByPk(decoded.id);
+    if (!admin || !admin.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or deactivated account'
+      });
+    }
+
+    req.admin = admin;
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Token expired'
+      });
+    }
+    
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid token'
+    });
+  }
+};
+
+// Logout
+exports.logout = (req, res) => {
+  res.clearCookie('adminToken');
+  res.json({
+    success: true,
+    message: 'Logout successful'
+  });
+};
+
+// Get Current Admin Profile
+exports.getProfile = async (req, res) => {
+  try {
+    const admin = req.admin;
     res.json({
       success: true,
-      data: user
+      data: {
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+        lastLogin: admin.lastLogin
+      }
     });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get profile',
-      error: error.message
+      message: 'Internal server error'
     });
   }
-};
-
-// Update User Profile
-const updateProfile = async (req, res) => {
-  try {
-    const {
-      first_name,
-      last_name,
-      phone,
-      address,
-      city,
-      state,
-      country,
-      postal_code,
-      date_of_birth,
-      gender
-    } = req.body;
-
-    const user = await User.findByPk(req.user.id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Check if phone is being updated and if it's already taken
-    if (phone && phone !== user.phone) {
-      const existingPhone = await User.findByPhone(phone);
-      if (existingPhone && existingPhone.id !== user.id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Phone number already taken'
-        });
-      }
-    }
-
-    // Update user
-    await user.update({
-      first_name: first_name || user.first_name,
-      last_name: last_name || user.last_name,
-      phone: phone || user.phone,
-      address: address || user.address,
-      city: city || user.city,
-      state: state || user.state,
-      country: country || user.country,
-      postal_code: postal_code || user.postal_code,
-      date_of_birth: date_of_birth || user.date_of_birth,
-      gender: gender || user.gender
-    });
-
-    // Remove password from response
-    const userResponse = user.toJSON();
-    delete userResponse.password;
-
-    res.json({
-      success: true,
-      message: 'Profile updated successfully',
-      data: userResponse
-    });
-  } catch (error) {
-    console.error('Update profile error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update profile',
-      error: error.message
-    });
-  }
-};
-
-// Change Password
-const changePassword = async (req, res) => {
-  try {
-    const { current_password, new_password } = req.body;
-
-    if (!current_password || !new_password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Current password and new password are required'
-      });
-    }
-
-    if (new_password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'New password must be at least 6 characters long'
-      });
-    }
-
-    const user = await User.findByPk(req.user.id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Verify current password
-    const isCurrentPasswordValid = await user.comparePassword(current_password);
-    if (!isCurrentPasswordValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Current password is incorrect'
-      });
-    }
-
-    // Update password
-    await user.update({ password: new_password });
-
-    res.json({
-      success: true,
-      message: 'Password changed successfully'
-    });
-  } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to change password',
-      error: error.message
-    });
-  }
-};
-
-// Forgot Password
-const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-
-    const user = await User.findByEmail(email);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Generate reset token (in production, send email with reset link)
-    const resetToken = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-
-    // In production, send email here
-    // await sendPasswordResetEmail(user.email, resetToken);
-
-    res.json({
-      success: true,
-      message: 'Password reset instructions sent to your email'
-    });
-  } catch (error) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process forgot password request',
-      error: error.message
-    });
-  }
-};
-
-// Reset Password
-const resetPassword = async (req, res) => {
-  try {
-    const { token, new_password } = req.body;
-
-    if (!token || !new_password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Token and new password are required'
-      });
-    }
-
-    if (new_password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'New password must be at least 6 characters long'
-      });
-    }
-
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findByPk(decoded.id);
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid or expired token'
-      });
-    }
-
-    // Update password
-    await user.update({ password: new_password });
-
-    res.json({
-      success: true,
-      message: 'Password reset successfully'
-    });
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid or expired token'
-      });
-    }
-
-    console.error('Reset password error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to reset password',
-      error: error.message
-    });
-  }
-};
-
-// Logout (client-side token removal)
-const logout = async (req, res) => {
-  try {
-    // In production, you might want to add the token to a blacklist
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
-    });
-  } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to logout',
-      error: error.message
-    });
-  }
-};
-
-// Verify Email
-const verifyEmail = async (req, res) => {
-  try {
-    const { token } = req.params;
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findByPk(decoded.id);
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid verification token'
-      });
-    }
-
-    if (user.email_verified_at) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email already verified'
-      });
-    }
-
-    await user.update({ 
-      email_verified_at: new Date(),
-      is_verified: true
-    });
-
-    res.json({
-      success: true,
-      message: 'Email verified successfully'
-    });
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid verification token'
-      });
-    }
-
-    console.error('Email verification error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to verify email',
-      error: error.message
-    });
-  }
-};
-
-module.exports = {
-  register,
-  login,
-  getProfile,
-  updateProfile,
-  changePassword,
-  forgotPassword,
-  resetPassword,
-  logout,
-  verifyEmail
 };

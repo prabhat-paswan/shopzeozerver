@@ -13,29 +13,45 @@ const generateSlug = (name) => {
 };
 
 // Helper function to handle file upload
-const handleFileUpload = async (file, uploadDir = 'uploads/categories') => {
-  if (!file) return null;
-  
+const handleFileUpload = async (file) => {
+  if (!file) {
+    throw new Error('No file provided');
+  }
+
   try {
+    console.log('Processing category image upload:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
+
     // Create upload directory if it doesn't exist
-    const fullUploadDir = path.join(__dirname, '..', '..', uploadDir);
+    const uploadDir = 'uploads/categories';
+    const fullUploadDir = path.join(__dirname, '..', uploadDir);
     await fs.mkdir(fullUploadDir, { recursive: true });
-    
-    // Generate unique filename
+
+    // Generate unique filename with proper extension handling
     const timestamp = Date.now();
-    const originalName = file.originalname;
-    const extension = path.extname(originalName);
-    const filename = `${timestamp}-${Math.random().toString(36).substring(2)}${extension}`;
+    const originalName = file.originalname || 'category';
+    const extension = path.extname(originalName) || '.jpg';
+    const filename = `category-${timestamp}-${Math.round(Math.random() * 1E9)}${extension}`;
     const filepath = path.join(fullUploadDir, filename);
-    
-    // Move file to upload directory
+
+    console.log('Saving category image to:', filepath);
+
+    // Save file using buffer
     await fs.writeFile(filepath, file.buffer);
-    
-    // Return relative path for database storage
-    return path.join(uploadDir, filename);
+
+    // Return full URL
+    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+    const imageUrl = `${baseUrl}/uploads/categories/${filename}`;
+
+    console.log('Category image uploaded successfully:', imageUrl);
+    return imageUrl;
+
   } catch (error) {
-    console.error('File upload error:', error);
-    throw new Error('File upload failed');
+    console.error('Category image upload error:', error);
+    throw new Error(`Category image upload failed: ${error.message}`);
   }
 };
 
@@ -187,10 +203,8 @@ exports.createCategory = async (req, res) => {
     // Handle file uploads
     let image = null;
     
-    if (req.files) {
-      if (req.files.logo) {
-        image = await handleFileUpload(req.files.logo);
-      }
+    if (req.files && req.files.logo) {
+      image = await handleFileUpload(req.files.logo[0]);
     }
     
     // Create category
@@ -298,7 +312,7 @@ exports.updateCategory = async (req, res) => {
       }
       
       // Upload new image
-      image = await handleFileUpload(req.files.logo);
+      image = await handleFileUpload(req.files.logo[0]);
     }
     
     // Determine new level
