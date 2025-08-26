@@ -15,6 +15,7 @@ router.get('/:id', subCategoryController.getSubCategory);
 // Create new sub category
 router.post('/', subCategoryController.createSubCategory);
 
+
 // Update sub category
 router.put('/:id', subCategoryController.updateSubCategory);
 

@@ -469,43 +469,43 @@ exports.bulkUploadProducts = async (req, res) => {
 
     const csvBuffer = req.file.buffer;
     const csvText = csvBuffer.toString('utf-8');
-    const lines = csvText.split('\n');
     
-    console.log('✅ CSV lines count:', lines.length);
+    // Parse CSV manually since csv-parser is causing issues
+    const lines = csvText.split('\n').filter(line => line.trim());
+    const headers = lines[0].split(',').map(h => h.trim());
+    const results = [];
     
-    if (lines.length < 2) {
-      console.log('❌ CSV too short');
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim());
+      const row = {};
+      headers.forEach((header, index) => {
+        row[header] = values[index] || '';
+      });
+      results.push(row);
+    }
+    
+    console.log('✅ CSV parsed successfully, rows:', results.length);
+    console.log('📋 Headers:', headers);
+    console.log('📊 First row sample:', results[0]);
+    
+    if (results.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'CSV file must contain headers and at least one data row'
+        message: 'CSV file must contain at least one data row'
       });
     }
 
-    // Parse headers
-    const headers = lines[0].split(',').map(h => h.trim());
-    console.log('✅ Headers:', headers);
-    
     // Parse data rows
     const products = [];
     let uploadedCount = 0;
     let errorCount = 0;
     const errors = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      if (!lines[i].trim()) continue;
-      
+    for (let i = 0; i < results.length; i++) {
       try {
         console.log(`\n--- Processing Row ${i + 1} ---`);
         
-        const values = lines[i].split(',').map(v => v.trim());
-        const productData = {};
-        
-        headers.forEach((header, index) => {
-          if (values[index]) {
-            productData[header] = values[index];
-          }
-        });
-
+        const productData = results[i];
         console.log('📊 Raw product data:', productData);
 
         // Generate UUID for product
@@ -559,12 +559,12 @@ exports.bulkUploadProducts = async (req, res) => {
         let mediaOrder = 0;
         
         // Add images
-        for (let i = 1; i <= 10; i++) {
-          if (productData[`Image ${i}`]) {
+        for (let j = 1; j <= 10; j++) {
+          if (productData[`Image ${j}`]) {
             mediaData.push({
               product_id: productId,
               media_type: 'image',
-              media_url: productData[`Image ${i}`],
+              media_url: productData[`Image ${j}`],
               media_order: mediaOrder++,
               is_active: true
             });
@@ -572,12 +572,12 @@ exports.bulkUploadProducts = async (req, res) => {
         }
         
         // Add videos
-        for (let i = 1; i <= 2; i++) {
-          if (productData[`Video ${i}`]) {
+        for (let j = 1; j <= 2; j++) {
+          if (productData[`Video ${j}`]) {
             mediaData.push({
               product_id: productId,
               media_type: 'video',
-              media_url: productData[`Video ${i}`],
+              media_url: productData[`Video ${j}`],
               media_order: mediaOrder++,
               is_active: true
             });
@@ -632,7 +632,7 @@ exports.bulkUploadProducts = async (req, res) => {
       } catch (rowError) {
         console.log(`❌ Row ${i + 1}: Error: ${rowError.message}`);
         errorCount++;
-        errors.push(`Row ${i + 1}: ${rowError.message}`);
+        errors.push(`Row ${i + 1}: Error: ${rowError.message}`);
       }
     }
 

@@ -124,35 +124,40 @@ const createBanner = async (req, res) => {
   try {
     const {
       title,
-      type,
-      data,
-      zone_id,
-      featured,
-      default_link
+      subtitle,
+      description,
+      banner_type,
+      resource_type,
+      resource_id,
+      resource_url,
+      button_text,
+      button_url,
+      start_date,
+      end_date,
+      is_active,
+      is_featured,
+      sort_order,
+      target_audience,
+      display_conditions,
+      meta_title,
+      meta_description,
+      meta_keywords
     } = req.body;
 
     // Validate required fields
-    if (!title || !type) {
+    if (!title || !banner_type) {
       return res.status(400).json({
         success: false,
-        message: 'Title and type are required'
+        message: 'Title and banner_type are required'
       });
     }
 
     // Validate banner type
-    const validTypes = ['store_wise', 'item_wise', 'category_wise', 'common'];
-    if (!validTypes.includes(type)) {
+    const validTypes = ['main_banner', 'category_banner', 'product_banner', 'store_banner'];
+    if (!validTypes.includes(banner_type)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid banner type. Must be one of: store_wise, item_wise, category_wise, common'
-      });
-    }
-
-    // Validate data field based on type
-    if (type !== 'common' && !data) {
-      return res.status(400).json({
-        success: false,
-        message: `Data field is required for ${type} banners`
+        message: 'Invalid banner type. Must be one of: main_banner, category_banner, product_banner, store_banner'
       });
     }
 
@@ -173,14 +178,25 @@ const createBanner = async (req, res) => {
     // Create banner
     const banner = await Banner.create({
       title,
-      type,
+      subtitle,
+      description,
       image: uploadedFiles.image,
-      data: data || null,
-      zone_id: parseInt(zone_id) || 1,
-      featured: featured === 'true' ? 1 : 0,
-      default_link,
-      status: 1, // Default to active
-      created_by: 'admin'
+      banner_type,
+      resource_type,
+      resource_id: resource_id ? parseInt(resource_id) : null,
+      resource_url,
+      button_text,
+      button_url,
+      start_date: start_date ? new Date(start_date) : null,
+      end_date: end_date ? new Date(end_date) : null,
+      is_active: is_active !== undefined ? Boolean(is_active) : true,
+      is_featured: is_featured !== undefined ? Boolean(is_featured) : false,
+      sort_order: sort_order ? parseInt(sort_order) : 0,
+      target_audience,
+      display_conditions,
+      meta_title,
+      meta_description,
+      meta_keywords
     });
 
     res.status(201).json({
@@ -201,23 +217,23 @@ const createBanner = async (req, res) => {
 // Get all banners with pagination
 const getBanners = async (req, res) => {
   try {
-    const { page = 1, limit = 10, type, status } = req.query;
+    const { page = 1, limit = 10, banner_type, is_active } = req.query;
     
     const whereClause = {};
     
-    // Filter by type
-    if (type) {
-      whereClause.type = type;
+    // Filter by banner type
+    if (banner_type) {
+      whereClause.banner_type = banner_type;
     }
     
-    // Filter by status
-    if (status !== undefined) {
-      whereClause.status = parseInt(status);
+    // Filter by active status
+    if (is_active !== undefined) {
+      whereClause.is_active = is_active === 'true';
     }
 
     const { count, rows: banners } = await Banner.findAndCountAll({
       where: whereClause,
-      order: [['created_at', 'DESC']],
+      order: [['sort_order', 'ASC'], ['created_at', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(limit) * (parseInt(page) - 1)
     });
@@ -228,18 +244,28 @@ const getBanners = async (req, res) => {
     const transformedBanners = banners.map(banner => ({
       id: banner.id,
       title: banner.title,
-      subtitle: banner.type, // Map type to subtitle for display
-      description: banner.data, // Map data to description for display
+      subtitle: banner.subtitle,
+      description: banner.description,
       image: `/uploads/banners/${banner.image}`, // Construct full image URL
-      banner_type: banner.type,
-      button_text: banner.default_link ? 'View' : null,
-      button_url: banner.default_link,
-      is_active: banner.status === 1,
-      is_featured: banner.featured === 1,
-      sort_order: 0, // Not available in current schema
-      clicks: 0, // Not available in current schema
-      impressions: 0, // Not available in current schema
-      ctr: 0 // Not available in current schema
+      banner_type: banner.banner_type,
+      resource_type: banner.resource_type,
+      resource_id: banner.resource_id,
+      resource_url: banner.resource_url,
+      button_text: banner.button_text,
+      button_url: banner.button_url,
+      start_date: banner.start_date,
+      end_date: banner.end_date,
+      is_active: banner.is_active,
+      is_featured: banner.is_featured,
+      sort_order: banner.sort_order,
+      clicks: banner.clicks,
+      impressions: banner.impressions,
+      ctr: banner.ctr,
+      target_audience: banner.target_audience,
+      display_conditions: banner.display_conditions,
+      meta_title: banner.meta_title,
+      meta_description: banner.meta_description,
+      meta_keywords: banner.meta_keywords
     }));
 
     res.json({
@@ -388,13 +414,13 @@ const toggleBannerStatus = async (req, res) => {
       });
     }
 
-    const newStatus = banner.status === 1 ? 0 : 1;
-    await banner.update({ status: newStatus });
+    const newStatus = !banner.is_active;
+    await banner.update({ is_active: newStatus });
 
     res.json({
       success: true,
-      message: `Banner ${newStatus === 1 ? 'activated' : 'deactivated'} successfully`,
-      data: { status: newStatus }
+      message: `Banner ${newStatus ? 'activated' : 'deactivated'} successfully`,
+      data: { is_active: newStatus }
     });
   } catch (error) {
     console.error('Toggle banner status error:', error);
@@ -419,13 +445,13 @@ const toggleBannerFeatured = async (req, res) => {
       });
     }
 
-    const newFeatured = banner.featured === 1 ? 0 : 1;
-    await banner.update({ featured: newFeatured });
+    const newFeatured = !banner.is_featured;
+    await banner.update({ is_featured: newFeatured });
 
     res.json({
       success: true,
-      message: `Banner ${newFeatured === 1 ? 'featured' : 'unfeatured'} successfully`,
-      data: { featured: newFeatured }
+      message: `Banner ${newFeatured ? 'featured' : 'unfeatured'} successfully`,
+      data: { is_featured: newFeatured }
     });
   } catch (error) {
     console.error('Toggle banner featured error:', error);

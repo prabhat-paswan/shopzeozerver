@@ -104,6 +104,7 @@ exports.createSubCategory = async (req, res) => {
       name,
       priority = 0,
       isActive = true,
+      is_active = true,
       categoryId,
       category_id, // Handle both field names
       metaTitle,
@@ -113,6 +114,9 @@ exports.createSubCategory = async (req, res) => {
     
     // Use categoryId or category_id, whichever is provided
     const finalCategoryId = categoryId || category_id;
+    
+    // Use isActive or is_active, whichever is provided
+    const finalIsActive = isActive !== undefined ? isActive : is_active;
     
     // Validate required fields
     if (!name) {
@@ -130,6 +134,7 @@ exports.createSubCategory = async (req, res) => {
     }
     
     console.log('Using category ID:', finalCategoryId);
+    console.log('Using isActive:', finalIsActive);
     
     // Check if category exists
     const category = await Category.findByPk(finalCategoryId);
@@ -157,7 +162,7 @@ exports.createSubCategory = async (req, res) => {
       name,
       slug,
       priority: parseInt(priority),
-      is_active: Boolean(isActive),
+      is_active: Boolean(finalIsActive),
       category_id: parseInt(finalCategoryId),
       meta_title: metaTitle,
       meta_description: metaDescription,
@@ -189,11 +194,19 @@ exports.updateSubCategory = async (req, res) => {
       name,
       priority,
       isActive,
+      is_active,
       categoryId,
+      category_id,
       metaTitle,
       metaDescription,
       metaKeywords
     } = req.body;
+    
+    // Use categoryId or category_id, whichever is provided
+    const finalCategoryId = categoryId || category_id;
+    
+    // Use isActive or is_active, whichever is provided
+    const finalIsActive = isActive !== undefined ? isActive : is_active;
     
     // Find sub category
     const subCategory = await SubCategory.findByPk(id);
@@ -205,8 +218,8 @@ exports.updateSubCategory = async (req, res) => {
     }
     
     // Check if new category exists (if changing)
-    if (categoryId && categoryId !== subCategory.category_id) {
-      const category = await Category.findByPk(categoryId);
+    if (finalCategoryId && finalCategoryId !== subCategory.category_id) {
+      const category = await Category.findByPk(finalCategoryId);
       if (!category) {
         return res.status(400).json({
           success: false,
@@ -237,8 +250,8 @@ exports.updateSubCategory = async (req, res) => {
       name: name || subCategory.name,
       slug,
       priority: priority !== undefined ? parseInt(priority) : subCategory.priority,
-      is_active: isActive !== undefined ? Boolean(isActive) : subCategory.is_active,
-      category_id: categoryId !== undefined ? parseInt(categoryId) : subCategory.category_id,
+      is_active: finalIsActive !== undefined ? Boolean(finalIsActive) : subCategory.is_active,
+      category_id: finalCategoryId !== undefined ? parseInt(finalCategoryId) : subCategory.category_id,
       meta_title: metaTitle !== undefined ? metaTitle : subCategory.meta_title,
       meta_description: metaDescription !== undefined ? metaDescription : subCategory.meta_description,
       meta_keywords: metaKeywords !== undefined ? metaKeywords : subCategory.meta_keywords

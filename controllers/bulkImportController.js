@@ -192,6 +192,10 @@ const bulkImportProducts = async (req, res) => {
   const transaction = await sequelize.transaction();
   
   try {
+    console.log('🚀 Bulk import started');
+    console.log('📁 Request file:', req.file);
+    console.log('📋 Request body:', req.body);
+    
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -201,6 +205,8 @@ const bulkImportProducts = async (req, res) => {
 
     const { upsertMode = 'upsert' } = req.body; // 'skip' or 'upsert'
     const filePath = req.file.path;
+    console.log('📂 File path:', filePath);
+    console.log('📄 File exists:', fs.existsSync(filePath));
     
     const results = {
       total: 0,

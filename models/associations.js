@@ -51,11 +51,11 @@ User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' });
 User.hasMany(Review, { foreignKey: 'customerId', as: 'reviews' });
 User.hasMany(Like, { foreignKey: 'userId', as: 'likes' });
 User.hasMany(BlogPost, { foreignKey: 'authorId', as: 'blogPosts' });
-User.hasMany(Banner, { foreignKey: 'createdBy', as: 'banners' });
-User.hasMany(Coupon, { foreignKey: 'createdBy', as: 'coupons' });
-User.hasMany(Offer, { foreignKey: 'createdBy', as: 'offers' });
-User.hasMany(Announcement, { foreignKey: 'createdBy', as: 'announcements' });
-User.hasMany(Page, { foreignKey: 'createdBy', as: 'pages' });
+  // User.hasMany(Banner, { foreignKey: 'createdBy', as: 'banners' }); // Commented out as createdBy field doesn't exist in banners table
+  User.hasMany(Coupon, { foreignKey: 'createdBy', as: 'coupons' });
+  User.hasMany(Offer, { foreignKey: 'createdBy', as: 'offers' });
+  User.hasMany(Announcement, { foreignKey: 'createdBy', as: 'announcements' });
+  User.hasMany(Page, { foreignKey: 'createdBy', as: 'pages' });
 User.hasMany(Page, { foreignKey: 'publishedBy', as: 'publishedPages' });
 User.hasMany(Settings, { foreignKey: 'updatedBy', as: 'settingsUpdates' });
 User.hasMany(AuditLog, { foreignKey: 'userId', as: 'auditLogs' });
@@ -195,8 +195,8 @@ Ticket.hasMany(Message, { foreignKey: 'ticketId', as: 'messages' });
 Message.belongsTo(Ticket, { foreignKey: 'ticketId', as: 'ticket' });
 Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
 
-// Banner Associations
-Banner.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+// Banner Associations - Commented out as createdBy field doesn't exist in banners table
+// Banner.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
 // Coupon Associations
 Coupon.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
