@@ -4,9 +4,11 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
+const path = require('path');
 require('dotenv').config();
 
 const { testConnection } = require('./config/database');
+const config = require('./config/app');
 // Load model associations
 require('./models/associations');
 const authRoutes = require('./routes/auth');
@@ -20,7 +22,7 @@ const bulkImportRoutes = require('./routes/bulkImport');
 const categoryHierarchyRoutes = require('./routes/categoryHierarchy');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = config.PORT;
 
 // Middleware - Simplified approach without restrictive CSP
 app.use(helmet({
@@ -30,10 +32,10 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: true, // Allow all origins
+  origin: config.ALLOWED_ORIGINS,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "X-API-Key"]
 }));
 app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
@@ -59,7 +61,7 @@ app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Methods', 'GET');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
-}, express.static('uploads'));
+}, express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);

@@ -1,4 +1,5 @@
 const { sequelize } = require('../config/database');
+const config = require('../config/app');
 const Product = require('../models/Product');
 
 const updateProductUrls = async () => {
@@ -10,7 +11,6 @@ const updateProductUrls = async () => {
     console.log(`📊 Found ${products.length} products to update`);
     
     let updatedCount = 0;
-    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
     
     for (const product of products) {
       let needsUpdate = false;
@@ -22,9 +22,10 @@ const updateProductUrls = async () => {
       for (const field of imageFields) {
         if (product[field] && !product[field].startsWith('http')) {
           const imagePath = product[field].replace(/\\/g, '/').replace('uploads/', '');
-          updates[field] = `${baseUrl}/uploads/${imagePath}`;
+          const relativePath = `/uploads/${imagePath}`;
+          updates[field] = relativePath; // Store relative path only
           needsUpdate = true;
-          console.log(`🖼️  Updating ${field}: ${product[field]} → ${updates[field]}`);
+          console.log(`🖼️  Updating ${field}: ${product[field]} → ${relativePath}`);
         }
       }
       
@@ -34,9 +35,10 @@ const updateProductUrls = async () => {
       for (const field of videoFields) {
         if (product[field] && !product[field].startsWith('http')) {
           const videoPath = product[field].replace(/\\/g, '/').replace('uploads/', '');
-          updates[field] = `${baseUrl}/uploads/${videoPath}`;
+          const relativePath = `/uploads/${videoPath}`;
+          updates[field] = relativePath; // Store relative path only
           needsUpdate = true;
-          console.log(`🎥 Updating ${field}: ${product[field]} → ${updates[field]}`);
+          console.log(`🎥 Updating ${field}: ${product[field]} → ${relativePath}`);
         }
       }
       

@@ -10,7 +10,6 @@ const updateBrandUrls = async () => {
     console.log(`📊 Found ${brands.length} brands to update`);
     
     let updatedCount = 0;
-    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
     
     for (const brand of brands) {
       let needsUpdate = false;
@@ -19,17 +18,19 @@ const updateBrandUrls = async () => {
       // Update logo URL if it exists and doesn't already have full URL
       if (brand.logo && !brand.logo.startsWith('http')) {
         const logoPath = brand.logo.replace(/\\/g, '/').replace('uploads/', '');
-        updates.logo = `${baseUrl}/uploads/${logoPath}`;
+        const relativePath = `/uploads/${logoPath}`;
+        updates.logo = relativePath; // Store relative path only
         needsUpdate = true;
-        console.log(`🖼️  Updating logo: ${brand.logo} → ${updates.logo}`);
+        console.log(`🖼️  Updating logo: ${brand.logo} → ${relativePath}`);
       }
       
       // Update banner URL if it exists and doesn't already have full URL
       if (brand.banner && !brand.banner.startsWith('http')) {
         const bannerPath = brand.banner.replace(/\\/g, '/').replace('uploads/', '');
-        updates.banner = `${baseUrl}/uploads/${bannerPath}`;
+        const relativePath = `/uploads/${bannerPath}`;
+        updates.banner = relativePath; // Store relative path only
         needsUpdate = true;
-        console.log(`🖼️  Updating banner: ${brand.banner} → ${updates.banner}`);
+        console.log(`🖼️  Updating banner: ${brand.banner} → ${relativePath}`);
       }
       
       // Update the brand if needed

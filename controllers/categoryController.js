@@ -2,6 +2,8 @@ const Category = require('../models/Category');
 const { Op } = require('sequelize');
 const path = require('path');
 const fs = require('fs').promises;
+const config = require('../config/app');
+const liveServerSync = require('../services/liveServerSync');
 
 // Helper function to generate slug
 const generateSlug = (name) => {
@@ -42,9 +44,8 @@ const handleFileUpload = async (file) => {
     // Save file using buffer
     await fs.writeFile(filepath, file.buffer);
 
-    // Return full URL
-    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-    const imageUrl = `${baseUrl}/uploads/categories/${filename}`;
+    // Return relative path (will be converted to full URL in response)
+    const imageUrl = `/uploads/categories/${filename}`;
 
     console.log('Category image uploaded successfully:', imageUrl);
     return imageUrl;
@@ -85,6 +86,18 @@ exports.getCategories = async (req, res) => {
       order: [['sort_order', 'ASC'], ['createdAt', 'DESC']]
     });
     
+    // Format image URLs for all categories
+    const formattedCategories = categories.map(category => {
+      const categoryData = category.toJSON();
+      if (categoryData.image) {
+        // Only format if it's a relative path, not already a full URL
+        if (!categoryData.image.startsWith('http')) {
+          categoryData.image = config.getImageUrl(categoryData.image);
+        }
+      }
+      return categoryData;
+    });
+    
     // Get all categories for parent selection (excluding current category if editing)
     const allCategories = await Category.findAll({
       where: { is_active: true },
@@ -95,7 +108,7 @@ exports.getCategories = async (req, res) => {
     res.json({
       success: true,
       data: {
-        categories,
+        categories: formattedCategories,
         allCategories,
         pagination: {
           currentPage: parseInt(page),
@@ -129,9 +142,18 @@ exports.getCategory = async (req, res) => {
       });
     }
     
+    // Format image URL
+    const categoryData = category.toJSON();
+    if (categoryData.image) {
+      // Only format if it's a relative path, not already a full URL
+      if (!categoryData.image.startsWith('http')) {
+        categoryData.image = config.getImageUrl(categoryData.image);
+      }
+    }
+    
     res.json({
       success: true,
-      data: category
+      data: categoryData
     });
   } catch (error) {
     console.error('Get category error:', error);
@@ -221,6 +243,17 @@ exports.createCategory = async (req, res) => {
       meta_description: metaDescription || null,
       meta_keywords: metaKeywords || null
     });
+    
+    // Sync to live server (optional - can be disabled)
+    if (process.env.SYNC_TO_LIVE === 'true') {
+      try {
+        await liveServerSync.syncCategory(category.toJSON());
+        console.log('✅ Category synced to live server');
+      } catch (error) {
+        console.log('⚠️ Category sync to live server failed:', error.message);
+        // Don't fail the request if live sync fails
+      }
+    }
     
     res.status(201).json({
       success: true,
@@ -348,6 +381,17 @@ exports.updateCategory = async (req, res) => {
       meta_keywords: metaKeywords !== undefined ? metaKeywords : category.meta_keywords
     });
     
+    // Sync update to live server (optional - can be disabled)
+    if (process.env.SYNC_TO_LIVE === 'true') {
+      try {
+        await liveServerSync.updateOnLive('categories', id, category.toJSON());
+        console.log('✅ Category update synced to live server');
+      } catch (error) {
+        console.log('⚠️ Category update sync to live server failed:', error.message);
+        // Don't fail the request if live sync fails
+      }
+    }
+    
     res.json({
       success: true,
       message: 'Category updated successfully',
@@ -400,6 +444,17 @@ exports.deleteCategory = async (req, res) => {
     
     // Delete category
     await category.destroy();
+    
+    // Sync deletion to live server (optional - can be disabled)
+    if (process.env.SYNC_TO_LIVE === 'true') {
+      try {
+        await liveServerSync.deleteFromLive('categories', id);
+        console.log('✅ Category deletion synced to live server');
+      } catch (error) {
+        console.log('⚠️ Category deletion sync to live server failed:', error.message);
+        // Don't fail the request if live sync fails
+      }
+    }
     
     res.json({
       success: true,

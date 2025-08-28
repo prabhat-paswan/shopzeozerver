@@ -10,7 +10,6 @@ const updateCategoryUrls = async () => {
     console.log(`📊 Found ${categories.length} categories to update`);
     
     let updatedCount = 0;
-    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
     
     for (const category of categories) {
       let needsUpdate = false;
@@ -19,9 +18,10 @@ const updateCategoryUrls = async () => {
       // Update image URL if it exists and doesn't already have full URL
       if (category.image && !category.image.startsWith('http')) {
         const imagePath = category.image.replace(/\\/g, '/').replace('uploads/', '');
-        updates.image = `${baseUrl}/uploads/${imagePath}`;
+        const relativePath = `/uploads/${imagePath}`;
+        updates.image = relativePath; // Store relative path only
         needsUpdate = true;
-        console.log(`🖼️  Updating image: ${category.image} → ${updates.image}`);
+        console.log(`🖼️  Updating image: ${category.image} → ${relativePath}`);
       }
       
       // Update the category if needed

@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
+const config = require('../config/app');
 
 // Configure multer for brand image uploads
 const storage = multer.diskStorage({
@@ -32,74 +33,32 @@ const upload = multer({
   }
 });
 
-// Helper function to handle file uploads
-const handleFileUpload = async (files) => {
+
+const handleFileUpload = (files) => {
   const uploadedFiles = {};
-  const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-  
-  if (files.logo) {
-    try {
-      // Create upload directory if it doesn't exist
-      const uploadDir = 'uploads/brands';
-      const fullUploadDir = path.join(__dirname, '..', uploadDir);
-      await fs.mkdir(fullUploadDir, { recursive: true });
-      
-      // Generate unique filename
-      const timestamp = Date.now();
-      const originalName = files.logo[0].originalname || 'logo';
-      const extension = path.extname(originalName) || '.jpg';
-      const filename = `brand-${timestamp}-${Math.round(Math.random() * 1E9)}${extension}`;
-      const filepath = path.join(fullUploadDir, filename);
-      
-      // Move file to upload directory
-      await fs.writeFile(filepath, files.logo[0].buffer);
-      
-      // Return full URL
-      uploadedFiles.logo = `${baseUrl}/uploads/brands/${filename}`;
-    } catch (error) {
-      console.error('Logo upload error:', error);
-    }
+
+  if (files.logo && files.logo[0]) {
+    uploadedFiles.logo = `/uploads/brands/${files.logo[0].filename}`;
   }
-  
-  if (files.banner) {
-    try {
-      // Create upload directory if it doesn't exist
-      const uploadDir = 'uploads/brands';
-      const fullUploadDir = path.join(__dirname, '..', uploadDir);
-      await fs.mkdir(fullUploadDir, { recursive: true });
-      
-      // Generate unique filename
-      const timestamp = Date.now();
-      const originalName = files.banner[0].originalname || 'banner';
-      const extension = path.extname(originalName) || '.jpg';
-      const filename = `banner-${timestamp}-${Math.round(Math.random() * 1E9)}${extension}`;
-      const filepath = path.join(fullUploadDir, filename);
-      
-      // Move file to upload directory
-      await fs.writeFile(filepath, files.banner[0].buffer);
-      
-      // Return full URL
-      uploadedFiles.banner = `${baseUrl}/uploads/brands/${filename}`;
-    } catch (error) {
-      console.error('Banner upload error:', error);
-    }
+
+  if (files.banner && files.banner[0]) {
+    uploadedFiles.banner = `/uploads/brands/${files.banner[0].filename}`;
   }
-  
+
   return uploadedFiles;
 };
-
 // Helper function to delete old files
 const deleteOldFiles = async (brand, newFiles) => {
   const filesToDelete = [];
-  
+
   if (newFiles.logo && brand.logo && newFiles.logo !== brand.logo) {
     filesToDelete.push(brand.logo);
   }
-  
+
   if (newFiles.banner && brand.banner && newFiles.banner !== brand.banner) {
     filesToDelete.push(brand.banner);
   }
-  
+
   for (const filePath of filesToDelete) {
     try {
       await fs.unlink(filePath);
@@ -149,9 +108,13 @@ const createBrand = async (req, res) => {
 
     // Handle file uploads
     let uploadedFiles = {};
+    console.log("🚀 ~ createBrand ~ req:", req.files)
     if (req.files) {
+      console.log("🚀 ~ createBrand ~  in files:", req.files)
+
       uploadedFiles = await handleFileUpload(req.files);
     }
+    console.log("🚀 ~ createBrand ~ uploadedFiles:", uploadedFiles)
 
     // Create brand
     const brand = await Brand.create({
@@ -243,12 +206,24 @@ const getAllBrands = async (req, res) => {
       offset: parseInt(offset)
     });
 
+    // Format image URLs for all brands
+    const formattedBrands = brands.map(brand => {
+      const brandData = brand.toJSON();
+      if (brandData.logo) {
+        brandData.logo = config.getImageUrl(brandData.logo);
+      }
+      if (brandData.banner) {
+        brandData.banner = config.getImageUrl(brandData.banner);
+      }
+      return brandData;
+    });
+
     const totalPages = Math.ceil(count / limit);
 
     res.json({
       success: true,
       data: {
-        brands,
+        brands: formattedBrands,
         pagination: {
           currentPage: parseInt(page),
           totalPages,
@@ -280,9 +255,18 @@ const getBrandById = async (req, res) => {
       });
     }
 
+    // Format image URLs
+    const brandData = brand.toJSON();
+    if (brandData.logo) {
+      brandData.logo = config.getImageUrl(brandData.logo);
+    }
+    if (brandData.banner) {
+      brandData.banner = config.getImageUrl(brandData.banner);
+    }
+
     res.json({
       success: true,
-      data: brand
+      data: brandData
     });
   } catch (error) {
     console.error('Get brand error:', error);
@@ -310,11 +294,11 @@ const updateBrand = async (req, res) => {
 
     // Check if name is being updated and if it conflicts with existing brands
     if (updateData.name && updateData.name !== brand.name) {
-      const existingBrand = await Brand.findOne({ 
-        where: { 
+      const existingBrand = await Brand.findOne({
+        where: {
           name: updateData.name,
           id: { [Op.ne]: id }
-        } 
+        }
       });
       if (existingBrand) {
         return res.status(400).json({
@@ -525,9 +509,21 @@ const getFeaturedBrands = async (req, res) => {
       limit: 10
     });
 
+    // Format image URLs for featured brands
+    const formattedBrands = brands.map(brand => {
+      const brandData = brand.toJSON();
+      if (brandData.logo) {
+        brandData.logo = config.getImageUrl(brandData.logo);
+      }
+      if (brandData.banner) {
+        brandData.banner = config.getImageUrl(brandData.banner);
+      }
+      return brandData;
+    });
+
     res.json({
       success: true,
-      data: brands
+      data: formattedBrands
     });
   } catch (error) {
     console.error('Get featured brands error:', error);

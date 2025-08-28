@@ -10,7 +10,6 @@ const updateBannerUrls = async () => {
     console.log(`📊 Found ${banners.length} banners to update`);
     
     let updatedCount = 0;
-    const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
     
     for (const banner of banners) {
       let needsUpdate = false;
@@ -19,9 +18,10 @@ const updateBannerUrls = async () => {
       // Update image URL if it exists and doesn't already have full URL
       if (banner.image && !banner.image.startsWith('http')) {
         const imagePath = banner.image.replace(/\\/g, '/').replace('uploads/', '');
-        updates.image = `${baseUrl}/uploads/${imagePath}`;
+        const relativePath = `/uploads/${imagePath}`;
+        updates.image = relativePath; // Store relative path only
         needsUpdate = true;
-        console.log(`🖼️  Updating image: ${banner.image} → ${updates.image}`);
+        console.log(`🖼️  Updating image: ${banner.image} → ${relativePath}`);
       }
       
       // Update the banner if needed

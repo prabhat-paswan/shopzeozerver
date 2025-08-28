@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
+const config = require('../config/app');
 
 // Configure multer for banner image uploads
 const storage = multer.diskStorage({
@@ -35,7 +36,6 @@ const upload = multer({
 // Helper function to handle file uploads
 const handleFileUpload = async (files) => {
   const uploadedFiles = {};
-  const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
   
   console.log('Handling file upload with files:', files);
   
@@ -246,7 +246,7 @@ const getBanners = async (req, res) => {
       title: banner.title,
       subtitle: banner.subtitle,
       description: banner.description,
-      image: `/uploads/banners/${banner.image}`, // Construct full image URL
+      image: config.getImageUrl(`/uploads/banners/${banner.image}`), // Use config function
       banner_type: banner.banner_type,
       resource_type: banner.resource_type,
       resource_id: banner.resource_id,
@@ -303,9 +303,15 @@ const getBannerById = async (req, res) => {
       });
     }
 
+    // Format image URL
+    const bannerData = banner.toJSON();
+    if (bannerData.image) {
+      bannerData.image = config.getImageUrl(`/uploads/banners/${bannerData.image}`);
+    }
+
     res.json({
       success: true,
-      data: banner
+      data: bannerData
     });
   } catch (error) {
     console.error('Get banner error:', error);
